@@ -6,7 +6,7 @@ import sys
 
 from worlds.base_world import World as BaseWorld
 import core.tools as tools
-import becca_utils_control_panel.control_panel as cp
+import becca_tools_control_panel.control_panel as cp
 
 class World(BaseWorld):
     """ The listen world provides a stream of audio data to the BECCA agent
@@ -97,8 +97,7 @@ class World(BaseWorld):
             self.surprise_log = open(self.surprise_log_filename, 'w')
 
     def initialize_audio_file(self):
-        filename = self.audio_filenames \
-                [np.random.randint(0, self.audio_file_count)]
+        filename = self.audio_filenames[np.random.randint(0, self.audio_file_count)]
         print 'Loading', filename
         self.audio_data = np.loadtxt(filename)
         self.audio_data = np.delete(self.audio_data, 
