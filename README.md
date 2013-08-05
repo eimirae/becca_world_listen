@@ -13,4 +13,4 @@ and comment out all other World import lines.
 
 Typing `python tester.py` at the command line will run the listen world. It draws training data from all `.txt` files that it finds in the `becca_world_listen/data` directory. 
 
-In `listen.py`, manually set the flag variable `self.TEST` to `True` when you want to test the anomaly detection performance. It will look for the test data in `becca_world_listen/test/test.txt' and for ground truth information in the same directory under `truth.txt`. 
+In `listen.py`, manually set the flag variable `self.TEST` to `True` when you want to test the anomaly detection performance. It will look for the test data in `becca_world_listen/test/test.txt` and for ground truth information in the same directory under `truth.txt`. 
