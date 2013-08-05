@@ -19,8 +19,8 @@ class World(BaseWorld):
             self.LIFESPAN = lifespan
         # Flag indicates whether the world is in testing mode
         self.TEST = False
-        self.DISPLAY_INTERVAL = 10 ** 1
-        self.plot_all_features = True
+        self.DISPLAY_INTERVAL = 5 * 10 ** 5
+        self.plot_all_features = False
         self.name = 'listen_world'
         print "Entering", self.name
         self.sample_length_ms = 200
@@ -56,9 +56,9 @@ class World(BaseWorld):
                                 d = 1/self.SAMPLING_FREQUENCY) 
         self.keeper_frequency_indices = np.where(self.frequencies > 0)
         self.frequencies = self.frequencies[self.keeper_frequency_indices] 
-        tones_per_octave = 8.
-        min_log2_freq = 6.
-        num_octaves = 4.
+        tones_per_octave = 24.
+        min_log2_freq = 5.
+        num_octaves = 8.
         max_log2_freq = min_log2_freq + num_octaves
         num_bin_boundaries = num_octaves * tones_per_octave + 1
         self.bin_boundaries = np.logspace(min_log2_freq, max_log2_freq, 
@@ -149,9 +149,13 @@ class World(BaseWorld):
             for block in agent.blocks:
                 block.ziptie.COACTIVITY_UPDATE_RATE = 0.
                 block.ziptie.JOINING_THRESHOLD = 2.
+                block.ziptie.AGGLOMERATION_ENERGY_RATE = 0.
+                block.ziptie.NUCLEATION_ENERGY_RATE = 0.
                 for cog in block.cogs:
                     cog.ziptie.COACTIVITY_UPDATE_RATE = 0.
                     cog.ziptie.JOINING_THRESHOLD = 2.
+                    cog.ziptie.AGGLOMERATION_ENERGY_RATE = 0.
+                    cog.ziptie.NUCLEATION_ENERGY_RATE = 0.
                     cog.daisychain.CHAIN_UPDATE_RATE = 0.
         else:
             pass
@@ -454,7 +458,7 @@ class World(BaseWorld):
                     # create a plot of individual features
                     filename = '_'.join(('block', str(block_index).zfill(2),
                                          'feature',str(feature_index).zfill(4),
-                                         'listen', 'world.png'))
+                                         self.name, 'world.png'))
                     full_filename = os.path.join('becca_world_listen',
                                                  'log', filename)
                     plt.title(filename)
@@ -511,7 +515,6 @@ class World(BaseWorld):
                     compname = "not compressed"
                     wave_file.setparams((nchannels, sampwidth, framerate, 
                                          nframes, comptype, compname))
-                    print 'asl', audio_state_length, 'afl', audio_feature_length, 'afla', audio_feature.size, 'si', start_index, 'ei', end_index
                     # I have no idea why it only works when I write it twice.
                     # If I only write it once, I only get the first half
                     # of the file.
