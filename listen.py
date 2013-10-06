@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import sys
+import wave
 
 from worlds.base_world import World as BaseWorld
 import core.tools as tools
@@ -19,8 +20,8 @@ class World(BaseWorld):
             self.LIFESPAN = lifespan
         # Flag indicates whether the world is in testing mode
         self.TEST = False
-        self.DISPLAY_INTERVAL = 5 * 10 ** 5
-        self.plot_all_features = False
+        self.DISPLAY_INTERVAL = 10 ** 4
+        self.plot_all_features = True
         self.name = 'listen_world'
         print "Entering", self.name
         self.sample_length_ms = 200
@@ -56,7 +57,7 @@ class World(BaseWorld):
                                 d = 1/self.SAMPLING_FREQUENCY) 
         self.keeper_frequency_indices = np.where(self.frequencies > 0)
         self.frequencies = self.frequencies[self.keeper_frequency_indices] 
-        tones_per_octave = 24.
+        tones_per_octave = 12.
         min_log2_freq = 5.
         num_octaves = 8.
         max_log2_freq = min_log2_freq + num_octaves
@@ -72,38 +73,31 @@ class World(BaseWorld):
         for bin_map_row in range(self.bin_map.shape[0]):
             self.bin_map[bin_map_row, 
                          np.where(bin_membership-1 == bin_map_row)] = 1.
-        self.bin_map = self.bin_map / (np.sum(self.bin_map, axis=1) \
-                                        [:,np.newaxis] + tools.EPSILON)
+        self.bin_map = self.bin_map / (np.sum(self.bin_map, axis=1) 
+                                       [:,np.newaxis] + tools.EPSILON)
         # Hann window 
         self.window = 0.5 * (1 - np.cos(2 * np.pi * np.arange(
                         self.snippet_length) / (self.snippet_length - 1)))
-        self.min_val = tools.BIG
-        self.max_val = -tools.BIG
-        self.max_bin_vals = -tools.BIG * np.ones((self.bin_map.shape[0], 1)) 
-        self.neutral_bin_vals = np.zeros((self.bin_map.shape[0], 1)) 
-        self.min_bin_vals = tools.BIG * np.ones((self.bin_map.shape[0], 1))
-        self.VALUE_RANGE_DECAY_RATE = 10 ** -1.5
-        self.BIN_RANGE_DECAY_RATE = 10 ** -4
-        self.MAX_NUM_FEATURES = 100       
         self.num_sensors = self.bin_map.shape[0]
         self.num_actions = 0
         self.initialize_control_panel()
         self.frame_counter = 10000
         self.last_feature_visualized = 0
         if self.TEST:
-            # debug
             self.surprise_log_filename = os.path.join('becca_world_listen', 
                                                       'log', 'surprise.txt')
             self.surprise_log = open(self.surprise_log_filename, 'w')
 
     def initialize_audio_file(self):
-        filename = self.audio_filenames[np.random.randint(0, self.audio_file_count)]
+        filename = self.audio_filenames[np.random.randint(
+                0, self.audio_file_count)]
         print 'Loading', filename
         self.audio_data = np.loadtxt(filename)
         self.audio_data = np.delete(self.audio_data, 
-                np.where(np.isnan(self.audio_data)), 0)
-        self.padded_audio_data = np.concatenate((np.zeros(self.pad_length), 
-                                self.audio_data, np.zeros(self.pad_length)))
+                                    np.where(np.isnan(self.audio_data)), 0)
+        self.padded_audio_data = np.concatenate((
+                np.zeros(self.pad_length), 
+                self.audio_data, np.zeros(self.pad_length)))
         self.position_in_clip = 0
         if self.audio_data.size < self.snippet_length:
             print 'That clip was too short. Trying another.'
@@ -139,10 +133,9 @@ class World(BaseWorld):
     def set_agent_parameters(self, agent):
         agent.VISUALIZE_PERIOD = 10 ** 3
         # debug
-        agent.recent_surprise_history = [6.] * 100
-        agent.typical_surprise = 6.
-        agent.filtered_surprise = agent.typical_surprise
-        agent.TYPICAL_SURPRISE_DECAY_RATE = 10 ** -2.5
+        #agent.recent_surprise_history = [21.] * 100
+        #agent.typical_surprise = 21.
+        #agent.filtered_surprise = agent.typical_surprise
         if self.TEST:
             # Prevent the agent from adapting during testing
             agent.BACKUP_PERIOD = 10 ** 9
@@ -170,8 +163,8 @@ class World(BaseWorld):
                 left=0., bottom=0., width=0.2, height=0.35)
         self.ax_sensors = cp.subfigure(self.fig, 
                 left=0.2, bottom=0., width=0.4, height=0.35)
-        self.ax23 = cp.subfigure(self.fig, 
-                left=0.6, bottom=0., width=0.25, height=0.1)
+        #self.ax23 = cp.subfigure(self.fig, 
+        #        left=0.6, bottom=0., width=0.25, height=0.1)
 
         # Initialize long snippet and surprise plot 
         self.long_snippet_length = self.pad_length * 2
@@ -181,37 +174,39 @@ class World(BaseWorld):
         t_steps = np.linspace(0, t_max, self.time_steps_per_long_snippet)
         t = np.linspace(0, t_max, self.long_snippet_length)
         self.snippet_data_long, = self.ax_snippet_long.plot(t, 
-                np.zeros((self.long_snippet_length)), color=tools.DARK_GREY)
+                np.zeros((self.long_snippet_length)), color=tools.COPPER_SHADOW)
         min_x_limit = 0.
         max_x_limit = t_max
         self.ax_snippet_long.axis((min_x_limit, max_x_limit, -1., 1.))
         self.ax_snippet_long.add_patch(mpatches.Rectangle((900, -.99), 200, 
-                1.98, facecolor=tools.LIGHT_GREY, edgecolor=tools.DARK_GREY) )
+                1.98, facecolor=tools.LIGHT_COPPER, 
+                edgecolor=tools.COPPER_SHADOW) )
         self.ax_snippet_long.text(min_x_limit +
-                (max_x_limit - min_x_limit) * 0.05, 1.0, 'Audio data stream', 
-                color=tools.DARK_GREY, size=10, ha='left', va='bottom')
+                (max_x_limit - min_x_limit) * 0.05, 0.97, 'Audio data stream', 
+                color=tools.COPPER_SHADOW, size=10, ha='left', va='bottom')
         self.ax_snippet_long.set_xlabel('time (ms)      .', 
-                color=tools.DARK_GREY, size=10, ha='right', va='center')
+                color=tools.COPPER_SHADOW, size=10, ha='right', va='center')
         self.ax_snippet_long.hold(True)
         self.surprise_data, = self.ax_snippet_long.plot(t_steps, -1 * np.ones((
-                self.time_steps_per_long_snippet)), color=tools.RED,
+                self.time_steps_per_long_snippet)), color=tools.COPPER,
                 linewidth=2.)
         self.ax_snippet_long.text(min_x_limit +
-                (max_x_limit - min_x_limit) * 0.05, -1.0, 'Novelty', 
-                color=tools.RED, size=10, ha='left', va='bottom')
+                (max_x_limit - min_x_limit) * 0.05, -.97, 'Novelty', 
+                color=tools.COPPER, size=10, ha='left', va='bottom')
         
         # Initialize snippet plot 
         t_max = self.snippet_length * 1000 / self.SAMPLING_FREQUENCY
         t = np.linspace(0, t_max, self.snippet_length)
         self.snippet_data, = self.ax_snippet.plot(t, 
-                np.zeros((self.snippet_length)), color=tools.DARK_GREY)
+                np.zeros((self.snippet_length)), color=tools.COPPER_SHADOW)
         min_x_limit = 0.
         max_x_limit = t_max
         self.ax_snippet.axis((min_x_limit, max_x_limit, -1., 1.))
         self.ax_snippet.text(min_x_limit + (max_x_limit - min_x_limit) * 0.05, 
-                1.0, 'Audio snippet', color=tools.DARK_GREY, size=10,
+                0.97, 'Audio snippet', color=tools.COPPER_SHADOW, size=10,
                 ha='left', va='bottom')
-        self.ax_snippet.set_xlabel('time (ms)      .', color=tools.DARK_GREY, 
+        self.ax_snippet.set_xlabel('time (ms)      .', 
+                color=tools.COPPER_SHADOW, 
                 size=10, ha='right', va='center')
         
         # Initialize sensors window 
@@ -219,7 +214,7 @@ class World(BaseWorld):
         self.sensor_data = self.ax_sensors.barh(
                 np.log10(self.bin_boundaries[1:]) - self.bar_width/2, 
                 np.zeros(self.num_sensors), height=self.bar_width, 
-                color=tools.DARK_GREY)
+                color=tools.COPPER_SHADOW)
         self.min_y_sensor_limit = np.log10(30)
         self.max_y_sensor_limit = np.log10(20000)
         self.ax_sensors.axis((0., 5., self.min_y_sensor_limit, 
@@ -238,27 +233,30 @@ class World(BaseWorld):
         self.ax_sensors.set_yticklabels(labels)
         self.ax_sensors.text(0.05, self.min_y_sensor_limit + 
                 (self.max_y_sensor_limit - self.min_y_sensor_limit) * 0.94, 
-                'Sensors', color=tools.DARK_GREY, size=10, 
+                'Sensors', color=tools.COPPER_SHADOW, size=10, 
                 ha='left', va='bottom')
-        self.ax_sensors.set_ylabel('frequency (Hz)', color=tools.DARK_GREY, 
+        self.ax_sensors.set_ylabel('frequency (Hz)', color=tools.COPPER_SHADOW, 
                 size=10, ha='right', va='center')
     
         # Initialize status window 
         self.ax_status.axis((0., 1., 0., 1.))
         self.ax_status.get_xaxis().set_visible(False)
         self.ax_status.get_yaxis().set_visible(False)
-        self.age_status = self.ax_status.text(-0.05, 0.9,
-                    'Clip time: 0 min', 
-                    color=tools.DARK_GREY, size=10, ha='left', va='center')
-        self.cumulative_age_status = self.ax_status.text(-0.05, 0.8,
-                    'Total time: 0 min', 
-                    color=tools.DARK_GREY, size=10, ha='left', va='center')
+        self.clip_time_status = self.ax_status.text(-0.05, 0.9,
+                    'Clip time:', 
+                    color=tools.COPPER_SHADOW, size=10, ha='left', va='center')
+        self.wake_time_status = self.ax_status.text(-0.05, 0.8,
+                    'Wake time:', 
+                    color=tools.COPPER_SHADOW, size=10, ha='left', va='center')
+        self.life_time_status = self.ax_status.text(-0.05, 0.7,
+                    'Life time:', 
+                    color=tools.COPPER_SHADOW, size=10, ha='left', va='center')
         
         # Initialize surprise plot 
         self.surprise_ax_left = 0.6
-        self.surprise_ax_bottom = 0.55
+        self.surprise_ax_bottom = 0.56
         self.surprise_ax_width = 0.4
-        self.surprise_ax_height = 0.45
+        self.surprise_ax_height = 0.44
         self.ax_surprise = cp.subfigure(self.fig, left=self.surprise_ax_left, 
                             bottom=self.surprise_ax_bottom, 
                             width=self.surprise_ax_width, 
@@ -266,15 +264,15 @@ class World(BaseWorld):
         self.ax_surprise.axis((0., 1., 0., 1.))
         self.ax_surprise.get_xaxis().set_visible(False)
         self.ax_surprise.get_yaxis().set_visible(False)
-        self.block_ax_vert_border = 0.01 * self.surprise_ax_height
+        self.block_ax_vert_border = 0.02 * self.surprise_ax_height
         self.block_ax_horz_border = 0.04 * self.surprise_ax_width
         self.surprise_block_ax = []
         
         # Initialize features plot 
         self.feature_ax_left = 0.6
-        self.feature_ax_bottom = 0.1
+        self.feature_ax_bottom = 0.12
         self.feature_ax_width = 0.4
-        self.feature_ax_height = 0.45
+        self.feature_ax_height = 0.44
         self.ax_features = cp.subfigure(self.fig, left=self.feature_ax_left, 
                             bottom=self.feature_ax_bottom, 
                             width=self.feature_ax_width, 
@@ -287,11 +285,11 @@ class World(BaseWorld):
         self.block_ax = []
         
         # Initialize heartbeat plot         
-        self.x = np.linspace(0, 6*np.pi, 100)
-        self.line1, = self.ax23.plot(self.x, np.sin(self.x), 'k-')
-        self.ax23.get_xaxis().set_visible(False)
-        self.ax23.get_yaxis().set_visible(False)
-        self.phase = 0.
+        #self.x = np.linspace(0, 6*np.pi, 100)
+        #self.line1, = self.ax23.plot(self.x, np.sin(self.x), 'k-')
+        #self.ax23.get_xaxis().set_visible(False)
+        #self.ax23.get_yaxis().set_visible(False)
+        #self.phase = 0.
         self.fig.show()
 
     def visualize(self, agent):
@@ -315,7 +313,7 @@ class World(BaseWorld):
                     = agent.surprise_history
         else:
             surprise[:half_length] = agent.surprise_history[-half_length:]
-        surprise_mod = np.asarray(surprise) / 5. 
+        surprise_mod = np.abs(np.asarray(surprise) / 30.) - 1. 
         surprise_mod = np.minimum(surprise_mod, 1.)
         self.surprise_data.set_ydata(surprise_mod)
         # Update long snippet data
@@ -332,11 +330,15 @@ class World(BaseWorld):
         for i in range(len(self.sensor_data)):
             self.sensor_data[i].set_width(self.sensors[i])
         # Update status window 
-        self.age_status.set_text(''.join((
+        self.clip_time_status.set_text(''.join((
                 'Clip time: ', '%0.2f' % (self.position_in_clip /
                 (self.SAMPLING_FREQUENCY * 60.)), ' min')))
-        self.cumulative_age_status.set_text(''.join((
-                'Total time: ', '%0.2f' % (self.timestep *
+        self.wake_time_status.set_text(''.join((
+                'Wake time: ', '%0.2f' % (self.timestep *
+                self.audio_samples_per_time_step /
+                (self.SAMPLING_FREQUENCY * 60.)), ' min')))
+        self.life_time_status.set_text(''.join((
+                'Life time: ', '%0.2f' % (agent.timestep *
                 self.audio_samples_per_time_step /
                 (self.SAMPLING_FREQUENCY * 60.)), ' min')))
 
@@ -374,12 +376,13 @@ class World(BaseWorld):
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
             plt.gray()
-            im = ax.imshow(surprise_array * 0.6 + 0.2, aspect='auto', 
-                           interpolation='nearest', vmin=0., vmax=1.)
+            im = ax.imshow(surprise_array, aspect='auto', 
+                           interpolation='nearest', vmin=0., vmax=1.,
+                           cmap='copper')
             if block_index == 0:
                 ax.text(num_cogs_in_block * 0.85,
                         block.max_bundles_per_cog * 0.8, 
-                        'Novelty', color=tools.LIGHT_GREY, 
+                        'Novelty', color=tools.OXIDE, 
                         size=10, ha='left', va='bottom')
             self.surprise_block_ax.append(ax)
 
@@ -418,12 +421,13 @@ class World(BaseWorld):
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
             plt.gray()
-            im = ax.imshow(activity_array * 0.6 + 0.2, aspect='auto', 
-                           interpolation='nearest', vmin=0., vmax=1.)
+            im = ax.imshow(activity_array, aspect='auto', 
+                           interpolation='nearest', vmin=0., vmax=1.,
+                           cmap='copper')
             if block_index == 0:
                 ax.text(num_cogs_in_block * 0.85,
                         block.max_bundles_per_cog * 0.8, 
-                        'Activities', color=tools.LIGHT_GREY, 
+                        'Activities', color=tools.OXIDE, 
                         size=10, ha='left', va='bottom')
             self.block_ax.append(ax)
         for block_index in range(num_blocks - 1):
@@ -443,7 +447,7 @@ class World(BaseWorld):
                                 self.bin_boundaries[1:]) - \
                                 self.bar_width/2 
                         bar_centers[-1] += self.bar_width
-                        bar_color = tools.DARK_GREY
+                        bar_color = tools.COPPER_SHADOW
                         ax.barh(bar_centers,  
                                 projections[block_index][feature_index]
                                 [self.num_actions:self.num_actions + 
@@ -452,7 +456,7 @@ class World(BaseWorld):
                                 color=bar_color, edgecolor=bar_color)
                         ax.plot(np.asarray((0.03, 0., 0., 0.03)), 
                                 np.asarray((2.05, 2.05, 2.95, 2.95)), 
-                                color=tools.DARK_GREY, linewidth=2)
+                                color=tools.COPPER_SHADOW, linewidth=2)
                         ax.axis((0., 1., self.min_y_sensor_limit, 
                                  self.max_y_sensor_limit))
                     # create a plot of individual features
@@ -464,8 +468,8 @@ class World(BaseWorld):
                     plt.title(filename)
                     plt.savefig(full_filename, format='png') 
                     # Create an audio representation of the feature
-                    audio_state_duration = 0.5 # seconds
-                    audio_state_overlap = 0.25 # seconds
+                    audio_state_duration = 0.3 # seconds
+                    audio_state_overlap = 0.2# seconds
                     audio_feature_duration = (audio_state_duration + 
                             (audio_state_duration - audio_state_overlap) * 
                             (states_per_feature - 1))
@@ -500,7 +504,6 @@ class World(BaseWorld):
                     audio_feature *= (0.8 * tools.MAX_INT16 / 
                                    np.max(np.abs(audio_feature)))
                     audio_feature = audio_feature.astype(np.int16)
-                    import wave
                     filename = '_'.join(('block', str(block_index).zfill(2),
                                          'feature',str(feature_index).zfill(4),
                                          'listen', 'world.wav'))
@@ -522,9 +525,6 @@ class World(BaseWorld):
                     wave_file.writeframes(audio_feature)
                     wave_file.close()
         self.fig.canvas.draw()
-        # Update heartbeat window
-        self.phase += 0.1
-        self.line1.set_ydata(np.sin(self.x + self.phase))
         plt.draw()
         # Save the control panel image
         filename =  self.name + '_' + str(self.frame_counter) + '.png'
