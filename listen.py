@@ -20,8 +20,8 @@ class World(BaseWorld):
             self.LIFESPAN = lifespan
         # Flag indicates whether the world is in testing mode
         self.TEST = False
-        self.DISPLAY_INTERVAL = 10 ** 4
-        self.plot_all_features = True
+        self.DISPLAY_INTERVAL = 10 ** 5
+        self.plot_all_features = False
         self.name = 'listen_world'
         print "Entering", self.name
         self.sample_length_ms = 200
@@ -40,11 +40,14 @@ class World(BaseWorld):
         if self.TEST:
             self.audio_filenames = []
             filename = os.path.join('becca_world_listen', 'test', 'test.txt')
+            #filename = os.path.join('becca_world_listen', 'test', 'test.wav')
             self.audio_filenames.append(filename)
             self.ground_truth_filename = os.path.join('becca_world_listen', 
                                                       'test', 'truth.txt')
+                                                      #'test', 'truth.wav')
         else:
             self.data_dir_name = os.path.join('becca_world_listen', 'data')
+            #extensions = ['.wav']
             extensions = ['.txt']
             self.audio_filenames = tools.get_files_with_suffix(
                     self.data_dir_name, extensions)
@@ -92,6 +95,9 @@ class World(BaseWorld):
         filename = self.audio_filenames[np.random.randint(
                 0, self.audio_file_count)]
         print 'Loading', filename
+        self.audio_data = np.zeros(1)
+        #with open(filename) as audio_file:
+            #self.audio_data = audio_file.readframes(10 ** 10)
         self.audio_data = np.loadtxt(filename)
         self.audio_data = np.delete(self.audio_data, 
                                     np.where(np.isnan(self.audio_data)), 0)
@@ -352,7 +358,7 @@ class World(BaseWorld):
         num_blocks = len(agent.blocks)
         for block_index in range(num_blocks):
             block = agent.blocks[block_index]
-            block_surprise = block.surprise / 10.
+            block_surprise = block.surprise 
             num_cogs_in_block = len(block.cogs)
             surprise_array = np.reshape(block_surprise, 
                                         (num_cogs_in_block,
