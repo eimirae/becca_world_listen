@@ -2,6 +2,7 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import struct
 import sys
 import wave
 
@@ -24,10 +25,10 @@ class World(BaseWorld):
         self.plot_all_features = False
         self.name = 'listen_world'
         print "Entering", self.name
-        self.sample_length_ms = 200
-        pad_length_ms = 1000
+        self.pad_length_ms = 1000.
+        self.sample_length_ms = self.pad_length_ms * .2
         self.SAMPLING_FREQUENCY = 44100.
-        self.pad_length = int(np.floor(pad_length_ms * 
+        self.pad_length = int(np.floor(self.pad_length_ms * 
                                        self.SAMPLING_FREQUENCY / 1000)) 
         self.snippet_length = int(np.floor(self.sample_length_ms * 
                                            self.SAMPLING_FREQUENCY / 1000))
@@ -39,16 +40,13 @@ class World(BaseWorld):
         # Generate a list of the filenames to be used
         if self.TEST:
             self.audio_filenames = []
-            filename = os.path.join('becca_world_listen', 'test', 'test.txt')
-            #filename = os.path.join('becca_world_listen', 'test', 'test.wav')
+            filename = os.path.join('becca_world_listen', 'test', 'test.wav')
             self.audio_filenames.append(filename)
             self.ground_truth_filename = os.path.join('becca_world_listen', 
                                                       'test', 'truth.txt')
-                                                      #'test', 'truth.wav')
         else:
             self.data_dir_name = os.path.join('becca_world_listen', 'data')
-            #extensions = ['.wav']
-            extensions = ['.txt']
+            extensions = ['.wav']
             self.audio_filenames = tools.get_files_with_suffix(
                     self.data_dir_name, extensions)
         self.audio_file_count = len(self.audio_filenames)
@@ -95,24 +93,52 @@ class World(BaseWorld):
         filename = self.audio_filenames[np.random.randint(
                 0, self.audio_file_count)]
         print 'Loading', filename
+        success = True
         self.audio_data = np.zeros(1)
-        #with open(filename) as audio_file:
-            #self.audio_data = audio_file.readframes(10 ** 10)
-        self.audio_data = np.loadtxt(filename)
+        #try:
+        audio_file = wave.open(filename)
+        audio_length = audio_file.getnframes()
+        n_channels = audio_file.getsampwidth()
+        frame_rate = audio_file.getframerate()
+        n_bits = 16.
+        if frame_rate != self.SAMPLING_FREQUENCY:
+            print 'Heads up: The audio file I just loaded has'
+            print 'a frame rate of', frame_rate, ' but I\'m going'
+            print 'to treat it as it if had a frame rate of'
+            print self.SAMPLING_FREQUENCY
+        self.audio_data = np.zeros(audio_length / n_channels)
+        index = 0
+        for i in range(audio_length / n_channels):
+            for _ in range(n_channels - 1):
+                audio_file.readframes(1)
+            wave_data = audio_file.readframes(1)
+            data = struct.unpack("<h", wave_data)
+            # Scale the audio signal by the maximum magnitude.
+            # This normalizes the signal to fall on [-1, 1]
+            self.audio_data[index] = data[0] / (2 ** (n_bits - 1))
+            index += 1
         self.audio_data = np.delete(self.audio_data, 
                                     np.where(np.isnan(self.audio_data)), 0)
         self.padded_audio_data = np.concatenate((
                 np.zeros(self.pad_length), 
                 self.audio_data, np.zeros(self.pad_length)))
+        # position_in_clip marks the point at the beginning of the snippet
+        # that is being processed
         self.position_in_clip = 0
         if self.audio_data.size < self.snippet_length:
             print 'That clip was too short. Trying another.'
+            success = False
+        #except:
+        #    print 'Crap.', filename, 'didn\'t open right. Trying again.'
+        #    success = False
+        if not success:
             self.initialize_audio_file()
 
     def step(self, action): 
         self.timestep += 1
+        self.position_in_clip += self.audio_samples_per_time_step 
         # Check whether the end of the clip has been reached
-        if (self.position_in_clip + 5 * self.snippet_length > 
+        if (self.position_in_clip + self.snippet_length + self.pad_length > 
             self.audio_data.size):
             if self.TEST:
                 # Terminate the test
@@ -133,7 +159,6 @@ class World(BaseWorld):
         binned_magnitudes = np.dot(self.bin_map, magnitudes[:,np.newaxis])
         self.sensors = np.log2(binned_magnitudes + 1.)
         reward = 0
-        self.position_in_clip += self.audio_samples_per_time_step 
         return self.sensors, reward
         
     def set_agent_parameters(self, agent):
@@ -173,7 +198,7 @@ class World(BaseWorld):
         #        left=0.6, bottom=0., width=0.25, height=0.1)
 
         # Initialize long snippet and surprise plot 
-        self.long_snippet_length = self.pad_length * 2
+        self.long_snippet_length = self.pad_length * 2 + self.snippet_length
         t_max = self.long_snippet_length * 1000 / self.SAMPLING_FREQUENCY
         self.time_steps_per_long_snippet = int(self.long_snippet_length / \
                 self.audio_samples_per_time_step) 
@@ -184,7 +209,8 @@ class World(BaseWorld):
         min_x_limit = 0.
         max_x_limit = t_max
         self.ax_snippet_long.axis((min_x_limit, max_x_limit, -1., 1.))
-        self.ax_snippet_long.add_patch(mpatches.Rectangle((900, -.99), 200, 
+        self.ax_snippet_long.add_patch(mpatches.Rectangle(
+                (self.pad_length_ms, -.99), self.sample_length_ms, 
                 1.98, facecolor=tools.LIGHT_COPPER, 
                 edgecolor=tools.COPPER_SHADOW) )
         self.ax_snippet_long.text(min_x_limit +
@@ -323,11 +349,10 @@ class World(BaseWorld):
         surprise_mod = np.minimum(surprise_mod, 1.)
         self.surprise_data.set_ydata(surprise_mod)
         # Update long snippet data
-        start_sample = self.position_in_clip - self.pad_length * .9 + \
-                                self.pad_length            
-        long_snippet = self.padded_audio_data[start_sample: 
-                                    start_sample + self.long_snippet_length]
-        scale_factor = 0.5
+        long_snippet = self.padded_audio_data[self.position_in_clip: 
+                                              self.position_in_clip + 
+                                              self.long_snippet_length]
+        scale_factor = 0.8
         long_snippet = long_snippet / scale_factor 
         self.snippet_data_long.set_ydata(long_snippet)
         # Update snippet plot 
