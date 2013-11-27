@@ -3,7 +3,7 @@ becca_world_listen
 
 The **listen** world identifies anomalies or unexpected occurences in audio data. It does this by building the data into a hierarchy of features and learning patterns of feature activity. 
 
-![screenshot](brohrer.github.com/becca_world_listen/img/listen_world_screenshot.png)
+![screenshot](img/listen_world_screenshot.png)
 
 To run BECCA with the listen world, clone this repository into your local copy of the `becca` repository so that it sits in the same directory as the `core` and `worlds` directories.
 
