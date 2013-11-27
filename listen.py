@@ -11,32 +11,39 @@ import core.tools as tools
 import becca_tools_control_panel.control_panel as cp
 
 class World(BaseWorld):
-    """ The listen world provides a stream of audio data to the BECCA agent
+    """ The listen world provides a stream of audio data to the BECCA agent.
     There are no actions that the agent can take that affect the world. 
     """
-    # This package assumes that it is located directly under the BECCA package 
+    # This assumes that the becca_world_listen package is located 
+    # directly under the BECCA package 
     def __init__(self, lifespan=None):
         super(World, self).__init__()
         if lifespan is not None:
             self.LIFESPAN = lifespan
         # Flag indicates whether the world is in testing mode
         self.TEST = False
-        self.DISPLAY_INTERVAL = 10 ** 5
+        self.DISPLAY_INTERVAL = 10 ** 1#5
+        # Flag determines whether to plot all the features during display
         self.plot_all_features = False
         self.name = 'listen_world'
         print "Entering", self.name
-        self.pad_length_ms = 1000.
-        self.sample_length_ms = self.pad_length_ms * .2
+        # Length of audio sample processed at each time step in ms
+        self.snippet_length_ms = 200.
+        self.pad_length_ms = 5. * self.snippet_length_ms
         self.SAMPLING_FREQUENCY = 44100.
+        self.snippet_length = int(np.floor(self.snippet_length_ms * 
+                                           self.SAMPLING_FREQUENCY / 1000))
         self.pad_length = int(np.floor(self.pad_length_ms * 
                                        self.SAMPLING_FREQUENCY / 1000)) 
-        self.snippet_length = int(np.floor(self.sample_length_ms * 
-                                           self.SAMPLING_FREQUENCY / 1000))
         # Step through the data such that each time step is synchronized with
-        # a frame of video
+        # a frame of video.
+        # For actual speed video, use frames_per_time_step about equal to 
+        # video_frame_rate * (self.snippet_length_ms / 2000)
         frames_per_time_step = 3
+        video_frame_rate = 29.947
         self.audio_samples_per_time_step = (
-                frames_per_time_step * int(self.SAMPLING_FREQUENCY / 29.947))
+                frames_per_time_step * int(self.SAMPLING_FREQUENCY / 
+                                           video_frame_rate))
         # Generate a list of the filenames to be used
         if self.TEST:
             self.audio_filenames = []
@@ -54,6 +61,7 @@ class World(BaseWorld):
         # Initialize the image_data to be viewed
         self.initialize_audio_file()
 
+        # Initialize the frequency bins
         self.frequencies = np.fft.fftfreq(self.snippet_length, 
                                 d = 1/self.SAMPLING_FREQUENCY) 
         self.keeper_frequency_indices = np.where(self.frequencies > 0)
@@ -78,7 +86,8 @@ class World(BaseWorld):
                                        [:,np.newaxis] + tools.EPSILON)
         # Hann window 
         self.window = 0.5 * (1 - np.cos(2 * np.pi * np.arange(
-                        self.snippet_length) / (self.snippet_length - 1)))
+                self.snippet_length) / (self.snippet_length - 1)))
+        
         self.num_sensors = self.bin_map.shape[0]
         self.num_actions = 0
         self.initialize_control_panel()
@@ -90,12 +99,12 @@ class World(BaseWorld):
             self.surprise_log = open(self.surprise_log_filename, 'w')
 
     def initialize_audio_file(self):
+        """ Load an audio file and get ready to process it """
         filename = self.audio_filenames[np.random.randint(
                 0, self.audio_file_count)]
         print 'Loading', filename
-        success = True
         self.audio_data = np.zeros(1)
-        #try:
+        #TODO: Add try-catch for safe failure during file reading
         audio_file = wave.open(filename)
         audio_length = audio_file.getnframes()
         n_channels = audio_file.getsampwidth()
@@ -112,11 +121,13 @@ class World(BaseWorld):
             for _ in range(n_channels - 1):
                 audio_file.readframes(1)
             wave_data = audio_file.readframes(1)
+            # This is the magic incantation to get the data in the right format 
             data = struct.unpack("<h", wave_data)
             # Scale the audio signal by the maximum magnitude.
             # This normalizes the signal to fall on [-1, 1]
             self.audio_data[index] = data[0] / (2 ** (n_bits - 1))
             index += 1
+        # Clean out any data points that read in funny or are non-numeric
         self.audio_data = np.delete(self.audio_data, 
                                     np.where(np.isnan(self.audio_data)), 0)
         self.padded_audio_data = np.concatenate((
@@ -127,27 +138,24 @@ class World(BaseWorld):
         self.position_in_clip = 0
         if self.audio_data.size < self.snippet_length:
             print 'That clip was too short. Trying another.'
-            success = False
-        #except:
-        #    print 'Crap.', filename, 'didn\'t open right. Trying again.'
-        #    success = False
-        if not success:
             self.initialize_audio_file()
 
     def step(self, action): 
+        """ Incrementally advance the world by one time step """
         self.timestep += 1
         self.position_in_clip += self.audio_samples_per_time_step 
         # Check whether the end of the clip has been reached
         if (self.position_in_clip + self.snippet_length + self.pad_length > 
             self.audio_data.size):
             if self.TEST:
-                # Terminate the test
+                # Terminate the test if it's over
                 self.surprise_log.close()
                 print 'End of test reached'
                 tools.report_roc(self.ground_truth_filename, 
                                 self.surprise_log_filename, self.name)
                 sys.exit()
             else:
+                # If it's not, find another file 
                 self.initialize_audio_file()
         # Generate a new audio snippet and set of sensor values
         self.snippet = self.audio_data[self.position_in_clip: 
@@ -155,18 +163,14 @@ class World(BaseWorld):
 
         magnitudes = np.abs(np.fft.fft(self.snippet).real) \
                             [self.keeper_frequency_indices]
-        #self.sensors = np.dot(self.bin_map, magnitudes[:,np.newaxis])
         binned_magnitudes = np.dot(self.bin_map, magnitudes[:,np.newaxis])
         self.sensors = np.log2(binned_magnitudes + 1.)
         reward = 0
         return self.sensors, reward
         
     def set_agent_parameters(self, agent):
+        """ Reach into the agent and set a few parameters, as necessary """
         agent.VISUALIZE_PERIOD = 10 ** 3
-        # debug
-        #agent.recent_surprise_history = [21.] * 100
-        #agent.typical_surprise = 21.
-        #agent.filtered_surprise = agent.typical_surprise
         if self.TEST:
             # Prevent the agent from adapting during testing
             agent.BACKUP_PERIOD = 10 ** 9
@@ -183,8 +187,10 @@ class World(BaseWorld):
                     cog.daisychain.CHAIN_UPDATE_RATE = 0.
         else:
             pass
-    
+        return
+
     def initialize_control_panel(self):
+        """ Set up the display panel to present the state of the world """
         self.fig = cp.figure()
         self.ax_snippet_long = cp.subfigure(self.fig, 
                 left=0., bottom=0.65, width=0.6, height=0.35)
@@ -194,8 +200,6 @@ class World(BaseWorld):
                 left=0., bottom=0., width=0.2, height=0.35)
         self.ax_sensors = cp.subfigure(self.fig, 
                 left=0.2, bottom=0., width=0.4, height=0.35)
-        #self.ax23 = cp.subfigure(self.fig, 
-        #        left=0.6, bottom=0., width=0.25, height=0.1)
 
         # Initialize long snippet and surprise plot 
         self.long_snippet_length = self.pad_length * 2 + self.snippet_length
@@ -210,7 +214,7 @@ class World(BaseWorld):
         max_x_limit = t_max
         self.ax_snippet_long.axis((min_x_limit, max_x_limit, -1., 1.))
         self.ax_snippet_long.add_patch(mpatches.Rectangle(
-                (self.pad_length_ms, -.99), self.sample_length_ms, 
+                (self.pad_length_ms, -.99), self.snippet_length_ms, 
                 1.98, facecolor=tools.LIGHT_COPPER, 
                 edgecolor=tools.COPPER_SHADOW) )
         self.ax_snippet_long.text(min_x_limit +
@@ -316,15 +320,10 @@ class World(BaseWorld):
         self.feature_ax_horz_border = 0.005 * self.feature_ax_width
         self.block_ax = []
         
-        # Initialize heartbeat plot         
-        #self.x = np.linspace(0, 6*np.pi, 100)
-        #self.line1, = self.ax23.plot(self.x, np.sin(self.x), 'k-')
-        #self.ax23.get_xaxis().set_visible(False)
-        #self.ax23.get_yaxis().set_visible(False)
-        #self.phase = 0.
         self.fig.show()
 
     def visualize(self, agent):
+        """ Update the display of the world's internal state to the user """
         if self.TEST:
             # Save the surprise value
             surprise_val = agent.surprise_history[-1]
@@ -500,7 +499,7 @@ class World(BaseWorld):
                     plt.savefig(full_filename, format='png') 
                     # Create an audio representation of the feature
                     audio_state_duration = 0.3 # seconds
-                    audio_state_overlap = 0.2# seconds
+                    audio_state_overlap = 0.2 # seconds
                     audio_feature_duration = (audio_state_duration + 
                             (audio_state_duration - audio_state_overlap) * 
                             (states_per_feature - 1))
@@ -562,6 +561,6 @@ class World(BaseWorld):
         full_filename = os.path.join('becca_world_listen', 'frames', filename)
         self.frame_counter += 1
         plt.figure(self.fig.number)
-        plt.savefig(full_filename, format='png', dpi=80) # for 720
-        #plt.savefig(full_filename, format='png', dpi=120) # for 1080
+        plt.savefig(full_filename, format='png', dpi=80) # for 720p resolution
+        #plt.savefig(full_filename, format='png', dpi=120) # for 1080p 
         return
